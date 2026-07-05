@@ -14,7 +14,7 @@ waveRoute turns global radio into something you can explore visually instead of 
 ## Tech Stack
 
 **Frontend (`web/`)**
-- Vanilla JavaScript, HTML, CSS
+- React, Vite
 - MapLibre GL JS for map rendering
 
 **Backend (`api/`)**
@@ -32,20 +32,25 @@ waveRoute/
 
 ## Running Locally
 
+The `api/` and `web/` folders are independent — run them separately.
+
+**Backend**
 ```bash
-# clone the repo
 git clone https://github.com/shad0w-o/waveRoute.git
-cd waveRoute
-
-# install and run the backend
-cd api
+cd waveRoute/api
 npm install
-npm start
-
-# serve the frontend
-cd ../web
-# open index.html or serve with a static server of your choice
+node app.js
+# runs on http://localhost:3000 by default
 ```
+
+**Frontend**
+```bash
+cd waveRoute/web
+npm install
+npm run dev
+```
+
+Make sure the frontend is pointed at the correct backend URL (e.g. `http://localhost:3000`) wherever it makes its `fetch` calls to `/getStations`.
 
 ## Credits
 
