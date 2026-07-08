@@ -13,8 +13,6 @@ const fetchStations = require('./stations');
 
 app.use(helmet());
 app.use(compression());
-app.use(express.static('public'));
-app.use(express.urlencoded( { extended: true} ));
 app.use(cors({ origin: true }));
 
 process.on('unhandledRejection', (err) => {
@@ -26,6 +24,7 @@ const CACHE_KEY = "stationsData";
 const REFRESH_INTERVAL = 24 * 60 * 60 * 1000;
 let lastRefresh = 0;
 let refreshing = false;
+let stationFetchPromise = null;
 
 app.get('/getStations' , async (req , res) => {
     try {
@@ -41,11 +40,8 @@ app.get('/getStations' , async (req , res) => {
             return res.json(cachedData);
         }
         
-        const stationsData = await fetchStations();
+        const stationsData = await fetchStationsOnce();
         if(stationsData != null){
-            myCache.set(CACHE_KEY , stationsData);
-            saveToDisk(stationsData);
-            lastRefresh = Date.now();
             return res.json(stationsData);
         } 
         else throw new Error("radio-browser api server error");
@@ -59,6 +55,26 @@ app.get('/getStations' , async (req , res) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+async function fetchStationsOnce() {
+    if (!stationFetchPromise) {
+        stationFetchPromise = fetchStations()
+            .then((stationsData) => {
+                if (stationsData) {
+                    myCache.set(CACHE_KEY, stationsData);
+                    saveToDisk(stationsData);
+                    lastRefresh = Date.now();
+                }
+
+                return stationsData;
+            })
+            .finally(() => {
+                stationFetchPromise = null;
+            });
+    }
+
+    return stationFetchPromise;
+}
 
 async function refreshStations() {
     if(refreshing) return;

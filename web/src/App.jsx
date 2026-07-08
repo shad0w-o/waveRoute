@@ -1,16 +1,32 @@
-import { useEffect , useRef, useState } from 'react';
+import { useCallback, useEffect , useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CustomAudioPlayer } from './audioPlayer.jsx';
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3000" : "");
+
+function getGenreFilter(genre) {
+    return genre === 'All' ? null : ['in', genre.toLowerCase(), ['get', 'tags']];
+}
+
+function applyGenreFilter(map, genre) {
+    if (!map.getLayer('station-points') || !map.getLayer('station-aura')) return;
+
+    const filter = getGenreFilter(genre);
+    map.setFilter('station-points', filter);
+    map.setFilter('station-aura', filter);
+}
 
 export default function Map() {
     const [darkMode, setDarkMode] = useState(true);
 	const containerRef = useRef(null);
 	const mapRef = useRef(null);
-	let [stationsData , setStationsData] = useState(null);
+	const [mapInstance, setMapInstance] = useState(null);
+	const [stationsData , setStationsData] = useState(null);
+	const [isLoadingStations, setIsLoadingStations] = useState(true);
+	const [stationsError, setStationsError] = useState('');
     const selectedRef = useRef(null);
+    const selectedGenreRef = useRef('All');
     const [selectedGenre, setSelectedGenre] = useState('All');
 
     function toggleTheme() {
@@ -19,25 +35,38 @@ export default function Map() {
         setDarkMode(!darkMode);
     }
 
-	useEffect(() => {
-		const getStationsData = async () => {
-			try {
-				const stationsDataPromise = await fetch(`${API_BASE}/getStations`);
-				let Data = await stationsDataPromise.json(); // this method is used to read and parse a http response (JSON.parse is only for json string)
-				console.log(Data.data.features.length , "didn't implement clustering because i want it to be visually dense");
-				setStationsData(Data);
-			} catch(error) {
-				console.log(error);
-			}
-		}
+    const getStationsData = useCallback(async () => {
+        setIsLoadingStations(true);
+        setStationsError('');
 
+        try {
+            const response = await fetch(`${API_BASE}/getStations`);
+            if (!response.ok) {
+                throw new Error(`Stations request failed with ${response.status}`);
+            }
+
+            const data = await response.json();
+            setStationsData(data);
+        } catch(error) {
+            console.error(error);
+            setStationsError('Stations unavailable');
+        } finally {
+            setIsLoadingStations(false);
+        }
+    }, []);
+
+	useEffect(() => {
 		getStationsData();
-	} , [])
+	} , [getStationsData])
+
+    useEffect(() => {
+        selectedGenreRef.current = selectedGenre;
+    }, [selectedGenre]);
 
     useEffect(() => {
         const isMobile = window.innerWidth < 768;
 
-        mapRef.current = new maplibregl.Map({
+        const map = new maplibregl.Map({
             container: containerRef.current,
             style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
             zoom: isMobile ? 1.5 : 0,
@@ -47,12 +76,15 @@ export default function Map() {
             dragRotate: false
         });
 
-        mapRef.current.touchZoomRotate.disableRotation();
-        mapRef.current.dragRotate.disable();
-        mapRef.current.keyboard.disableRotation();
+        map.touchZoomRotate.disableRotation();
+        map.dragRotate.disable();
+        map.keyboard.disableRotation();
+        mapRef.current = map;
+        setMapInstance(map);
 
         return () => {
-            mapRef.current.remove();
+            map.remove();
+            mapRef.current = null;
         };
     }, []);
 
@@ -171,11 +203,7 @@ export default function Map() {
                 );
             }
 
-            if (selectedGenre !== 'All') {
-                const filter = ['in', selectedGenre.toLowerCase(), ['get', 'tags']];
-                map.setFilter('station-points', filter);
-                map.setFilter('station-aura', filter);
-            }
+            applyGenreFilter(map, selectedGenreRef.current);
         };
 
         const handleStationClick = (e) => {
@@ -196,12 +224,10 @@ export default function Map() {
             selectedRef.current = id;
         };
 
-        map.on('style.load', addStations);
-        
         if (map.isStyleLoaded()) {
             addStations();
         } else {
-            map.once('load', addStations);
+            map.once('style.load', addStations);
         }
         
         const isMobile = window.matchMedia("(pointer: coarse)").matches;
@@ -222,28 +248,24 @@ export default function Map() {
 
     useEffect(() => {
         if (!mapRef.current) return;
-        const map = mapRef.current;
-
-        if (!map.getLayer('station-points')) return;
-
-        if (selectedGenre === 'All') {
-            map.setFilter('station-points', null);
-            map.setFilter('station-aura', null);
-        } else {
-            const filter = ['in', selectedGenre.toLowerCase(), ['get', 'tags']];
-
-            map.setFilter('station-points', filter);
-            map.setFilter('station-aura', filter);
-        }
-
+        applyGenreFilter(mapRef.current, selectedGenre);
     }, [selectedGenre]);
 
 	return (
 		<>
 			<div ref={containerRef} style={{ position: 'absolute', width: '100vw', height: '100vh'}}> </div>
-            <CustomAudioPlayer toggleTheme={ toggleTheme } darkMode={ darkMode } mapRef={ mapRef.current } selectedGenre={selectedGenre}
+            {(isLoadingStations || stationsError) && (
+                <div className="map-status z" role="status">
+                    <div>{stationsError || 'Loading stations...'}</div>
+                    {stationsError && (
+                        <button type="button" onClick={getStationsData}>
+                            Retry
+                        </button>
+                    )}
+                </div>
+            )}
+            <CustomAudioPlayer toggleTheme={ toggleTheme } darkMode={ darkMode } map={ mapInstance } selectedGenre={selectedGenre}
             setSelectedGenre={setSelectedGenre}/>
 		</>
 	);
 }
-

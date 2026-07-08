@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { CustomAPtop , GenreCarousel , StationInfo , MiniAudio , Controls } from './otherUi';
 import './AudioPlayer.css'
 
-function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , setSelectedGenre }) {
+function CustomAudioPlayer({ toggleTheme , darkMode , map , selectedGenre , setSelectedGenre }) {
     const audioRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [volume, setVolume] = useState(1);
@@ -20,7 +20,7 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
         audioRef.current = new Audio();
         audioRef.current.crossOrigin = "anonymous";
         audioRef.current.preload = "none";
-        audioRef.current.volume = volume;
+        audioRef.current.volume = 1;
 
         return () => {
             audioRef.current?.pause();
@@ -28,8 +28,10 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
         };
     }, []);
 
-    const togglePlayPause = () => {
+    const togglePlayPause = useCallback(() => {
         const audio = audioRef.current;
+        if (!audio) return;
+
         if (isPlaying) {
             audio.pause();
             setIsPlaying(false);
@@ -37,11 +39,13 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
             audio.play().catch(err => console.error("Playback failed:", err));
             setIsPlaying(true);
         }
-    };
+    }, [isPlaying]);
 
     const handleVolumeChange = (e) => {
         const newVolume = parseFloat(e.target.value);
         setVolume(newVolume);
+        if (!audioRef.current) return;
+
         audioRef.current.volume = newVolume;
         if (newVolume === 0) {
             setIsMuted(true);
@@ -51,15 +55,13 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
     };
 
     useEffect(() => {
-        if (!mapRef) return;
-
-        const map = mapRef;
+        if (!map) return;
 
         const handleStationClick = (e) => {
             const feature = e.features?.[0];
             if (!feature) return;
 
-            const { streamUrl, name } = feature.properties;
+            const { streamUrl } = feature.properties;
             if (!streamUrl) return;
 
             setErrorMessage('');
@@ -94,7 +96,7 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
         return () => {
             map.off('click', 'station-points', handleStationClick);
         };
-    }, [mapRef]);
+    }, [isPlaying, map, togglePlayPause]);
 
     return (
         <>
@@ -107,7 +109,7 @@ function CustomAudioPlayer({ toggleTheme , darkMode , mapRef , selectedGenre , s
 
                 <Controls isExpanded={ isExpanded } togglePlayPause={ togglePlayPause } isPlaying={ isPlaying } volume={ volume } isMuted={ isMuted } handleVolumeChange={ handleVolumeChange } />
 
-                <MiniAudio isExpanded={ isExpanded } currentStation={ currentStation } togglePlayPause={ togglePlayPause } isPlaying={ isPlaying } setIsExpanded={ setIsExpanded } />
+                <MiniAudio isExpanded={ isExpanded } togglePlayPause={ togglePlayPause } isPlaying={ isPlaying } setIsExpanded={ setIsExpanded } />
             </div>
             {errorMessage && (
                 <div className="error-toast">
